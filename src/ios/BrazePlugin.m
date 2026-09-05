@@ -97,19 +97,42 @@ bool useBrazeUIForInAppMessages;
   isInAppMessageSubscribed = NO;
   useBrazeUIForInAppMessages = YES;
 
-  [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(didFinishLaunchingListener:) name:UIApplicationDidFinishLaunchingNotification object:nil];
+  // COMPANY: Braze initialization is deferred to the `initializeBraze:` command so the
+  // country-specific API key can be selected at runtime. The UIApplicationDidFinishLaunchingNotification
+  // observer and the dispatch_async safety fallback have been intentionally removed — initialization
+  // is triggered from JavaScript via BrazePlugin.initialize({ country }).
+}
 
-  // Cordova iOS 8+ (Swift AppDelegate template) can load plugins after
-  // UIApplicationDidFinishLaunchingNotification has already been delivered, so the observer
-  // above would never fire. Run launch setup on the next main runloop pass if Braze is still unset.
-  __weak BrazePlugin *weakSelf = self;
-  dispatch_async(dispatch_get_main_queue(), ^{
-    BrazePlugin *strongSelf = weakSelf;
-    if (strongSelf == nil || [BrazePlugin braze] != nil) {
-      return;
-    }
-    [strongSelf didFinishLaunchingListener:nil];
-  });
+// COMPANY: Country-aware deferred Braze initialization.
+// Resolves the platform API key natively; no actual key is exposed to the JS layer.
+- (void)initializeBraze:(CDVInvokedUrlCommand *)command {
+  if ([BrazePlugin braze] != nil) {
+    CDVPluginResult *result = [CDVPluginResult resultWithStatus:CDVCommandStatus_OK messageAsString:@"already_initialized"];
+    [self.commandDelegate sendPluginResult:result callbackId:command.callbackId];
+    return;
+  }
+  NSString *country = [[command.arguments firstObject] uppercaseString];
+  NSArray *supported = @[@"EG", @"MA"];
+  if (!country || country.length == 0) {
+    CDVPluginResult *r = [CDVPluginResult resultWithStatus:CDVCommandStatus_ERROR messageAsString:@"Country code is required."];
+    [self.commandDelegate sendPluginResult:r callbackId:command.callbackId];
+    return;
+  }
+  if (![supported containsObject:country]) {
+    NSString *msg = [NSString stringWithFormat:@"Unsupported country: %@", country];
+    CDVPluginResult *r = [CDVPluginResult resultWithStatus:CDVCommandStatus_ERROR messageAsString:msg];
+    [self.commandDelegate sendPluginResult:r callbackId:command.callbackId];
+    return;
+  }
+  // Resolution order: country-specific key → com.braze.ios_api_key → com.braze.api_key (already in self.APIKey).
+  NSString *countryKey = [NSString stringWithFormat:@"com.company.braze.ios_api_key.%@", country];
+  NSString *resolvedKey = self.commandDelegate.settings[countryKey];
+  if (resolvedKey && resolvedKey.length > 0) {
+    self.APIKey = resolvedKey;
+  }
+  [self didFinishLaunchingListener:nil];
+  CDVPluginResult *result = [CDVPluginResult resultWithStatus:CDVCommandStatus_OK];
+  [self.commandDelegate sendPluginResult:result callbackId:command.callbackId];
 }
 
 - (void)didFinishLaunchingListener:(NSNotification *)notification {

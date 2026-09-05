@@ -49,12 +49,15 @@ open class BrazePlugin : CordovaPlugin() {
     private var disableAutoStartSessions = false
     private var inAppMessageDisplayOperation: InAppMessageOperation = InAppMessageOperation.DISPLAY_NOW
     private var subscribeToInAppMessageCallbackContext: CallbackContext? = null
+    // COMPANY: Tracks whether Braze has been configured with a country-specific API key.
+    private var companyBrazeInitialized = false
 
     override fun pluginInitialize() {
         applicationContext = cordova.activity.applicationContext
 
-        // Configure Braze using the preferences from the config.xml file passed to our plugin
-        configureFromCordovaPreferences(preferences)
+        // COMPANY: Braze configuration is deferred to the "initialize" execute action so
+        // the correct country-specific API key can be selected at runtime.
+        // configureFromCordovaPreferences is called from the "initialize" handler below.
 
         // Since we've likely passed the first Application.onCreate() (due to the plugin lifecycle), lets call the
         // in-app message manager and session handling now
@@ -82,6 +85,38 @@ open class BrazePlugin : CordovaPlugin() {
     override fun execute(action: String, args: JSONArray, callbackContext: CallbackContext): Boolean {
         initializePluginIfAppropriate()
         brazelog(I) { "Received $action with the following arguments: $args" }
+        // COMPANY: Reject all Braze API calls until initialize() has been called with a country.
+        if (action != "initialize" && !companyBrazeInitialized) {
+            callbackContext.error("Braze not initialized. Call BrazePlugin.initialize({ country }) first.")
+            return true
+        }
+        // COMPANY: Country-aware deferred initialization. Resolves the API key natively
+        // so no actual key is ever exposed to the JavaScript layer.
+        if (action == "initialize") {
+            if (companyBrazeInitialized) {
+                callbackContext.success("already_initialized")
+                return true
+            }
+            val country = args.optString(0, "").uppercase()
+            if (country.isBlank()) {
+                callbackContext.error("Country code is required.")
+                return true
+            }
+            if (country !in COMPANY_SUPPORTED_COUNTRIES) {
+                callbackContext.error("Unsupported country: $country")
+                return true
+            }
+            val apiKey = resolveCompanyAndroidApiKey(country)
+            if (apiKey.isNullOrBlank()) {
+                callbackContext.error("No API key configured for country: $country")
+                return true
+            }
+            preferences.set(BRAZE_API_KEY_PREFERENCE, apiKey)
+            configureFromCordovaPreferences(preferences)
+            companyBrazeInitialized = true
+            callbackContext.success()
+            return true
+        }
         when (action) {
             "startSessionTracking" -> {
                 disableAutoStartSessions = false
@@ -608,7 +643,10 @@ open class BrazePlugin : CordovaPlugin() {
     override fun onPause(multitasking: Boolean) {
         super.onPause(multitasking)
         initializePluginIfAppropriate()
-        getInAppMessageManager().unregisterInAppMessageManager(cordova.activity)
+        // COMPANY: Only manage in-app messages after Braze has been initialized.
+        if (companyBrazeInitialized) {
+            getInAppMessageManager().unregisterInAppMessageManager(cordova.activity)
+        }
     }
 
     override fun onResume(multitasking: Boolean) {
@@ -616,13 +654,17 @@ open class BrazePlugin : CordovaPlugin() {
         initializePluginIfAppropriate()
         // Registers the BrazeInAppMessageManager for the current Activity. This Activity will now listen for
         // in-app messages from Braze.
-        getInAppMessageManager().registerInAppMessageManager(cordova.activity)
+        // COMPANY: Only manage in-app messages after Braze has been initialized.
+        if (companyBrazeInitialized) {
+            getInAppMessageManager().registerInAppMessageManager(cordova.activity)
+        }
     }
 
     override fun onStart() {
         super.onStart()
         initializePluginIfAppropriate()
-        if (!disableAutoStartSessions) {
+        // COMPANY: Only manage sessions after Braze has been initialized with a country key.
+        if (companyBrazeInitialized && !disableAutoStartSessions) {
             getBraze().openSession(cordova.activity)
         }
     }
@@ -630,7 +672,8 @@ open class BrazePlugin : CordovaPlugin() {
     override fun onStop() {
         super.onStop()
         initializePluginIfAppropriate()
-        if (!disableAutoStartSessions) {
+        // COMPANY: Only manage sessions after Braze has been initialized with a country key.
+        if (companyBrazeInitialized && !disableAutoStartSessions) {
             getBraze().closeSession(cordova.activity)
         }
     }
@@ -962,7 +1005,22 @@ open class BrazePlugin : CordovaPlugin() {
         }
     }
 
+    // COMPANY: Resolves the Android API key for the given uppercase country code.
+    // Resolution order: country-specific key → com.braze.android_api_key → com.braze.api_key fallback.
+    private fun resolveCompanyAndroidApiKey(country: String): String? {
+        val countryKey = "$COMPANY_ANDROID_API_KEY_PREFIX$country"
+        preferences.getString(countryKey, "").takeIf { it.isNotBlank() }?.let { return it }
+        preferences.getString(BRAZE_API_KEY_PREFERENCE, "").takeIf { it.isNotBlank() }?.let { return it }
+        preferences.getString(BRAZE_API_KEY_DEPRECATED_PREFERENCE, "").takeIf { it.isNotBlank() }?.let { return it }
+        return null
+    }
+
     companion object {
+        // COMPANY: Prefix for country-specific Android API key preferences.
+        // Full key: com.company.braze.android_api_key.<COUNTRY> (e.g. .EG, .MA)
+        private const val COMPANY_ANDROID_API_KEY_PREFIX = "com.company.braze.android_api_key."
+        private val COMPANY_SUPPORTED_COUNTRIES = setOf("EG", "MA")
+
         // Preference keys found in the config.xml
         private const val BRAZE_API_KEY_PREFERENCE = "com.braze.android_api_key"
         private const val BRAZE_API_KEY_DEPRECATED_PREFERENCE = "com.braze.api_key"

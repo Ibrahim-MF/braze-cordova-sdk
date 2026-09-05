@@ -817,6 +817,21 @@ function isValidTrackingPropertyArray(array) {
     return Array.isArray(array) && array.every(item => typeof item === 'string');
 }
 
+/**
+ * COMPANY: Initializes Braze with the given country code.
+ * The platform-specific API key is resolved natively — no key is passed from JavaScript.
+ * Must be called once before any other Braze API. Safe to call multiple times; subsequent
+ * calls after successful initialization are returned as no-ops.
+ *
+ * @param {{ country: string }} options - Object with a two-letter ISO country code ('EG' or 'MA').
+ * @param {function} successCallback - Called with a result string on success.
+ * @param {function} errorCallback - Called with an error string on failure.
+ */
+BrazePlugin.prototype.initialize = function (options, successCallback, errorCallback) {
+    var country = (options && options.country) ? String(options.country) : '';
+    cordova.exec(successCallback, errorCallback, 'BrazePlugin', 'initialize', [country]);
+};
+
 var AppboyPlugin = BrazePlugin;
 
 module.exports = new BrazePlugin();
