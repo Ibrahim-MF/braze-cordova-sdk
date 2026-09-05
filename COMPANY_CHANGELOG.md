@@ -16,12 +16,12 @@ Base: upstream `17.0.0`
   to the native layer. The native layer resolves the API key; no key is ever exposed to JavaScript.
 
 - **`src/android/BrazePlugin.kt`** — `"initialize"` execute action:
-  Resolves the country-specific Android API key from `com.company.braze.android_api_key.<COUNTRY>`
+  Resolves the country-specific Android API key from `com.braze.android_api_key.<COUNTRY>`
   preferences, then calls `configureFromCordovaPreferences()`. Double-init is prevented via the
   `companyBrazeInitialized` flag. All other Braze actions are rejected until init completes.
 
 - **`src/android/BrazePlugin.kt`** — `resolveCompanyAndroidApiKey(country)` private method:
-  Resolution order: `com.company.braze.android_api_key.<COUNTRY>` →
+  Resolution order: `com.braze.android_api_key.<COUNTRY>` →
   `com.braze.android_api_key` → `com.braze.api_key` (deprecated fallback).
 
 - **`src/android/BrazePlugin.kt`** — `COMPANY_ANDROID_API_KEY_PREFIX` / `COMPANY_SUPPORTED_COUNTRIES`
@@ -32,7 +32,7 @@ Base: upstream `17.0.0`
   in-app message management does not run before a country key is resolved.
 
 - **`src/ios/BrazePlugin.m`** — `initializeBraze:` CDV command handler:
-  Country-aware deferred initialization for iOS. Resolves `com.company.braze.ios_api_key.<COUNTRY>`,
+  Country-aware deferred initialization for iOS. Resolves `com.braze.ios_api_key.<COUNTRY>`,
   falls back to the key read by `pluginInitialize`, then delegates to the existing
   `didFinishLaunchingListener:` method.
 
@@ -58,3 +58,20 @@ MoneyFellows operates in Egypt (EG) and Morocco (MA) with separate Braze workspa
 The single-key upstream plugin cannot select the correct workspace before the user's country is
 known. Deferred initialization lets the app resolve the country at runtime and pass it to the native
 layer, which then picks the right key from config — without ever exposing a real key to JavaScript.
+
+---
+
+## [17.0.0-company.2] — 2026-09-06
+
+Base: 17.0.0-company.1
+
+### Changed
+
+- **Preference naming** — switched country-specific key preference names from the custom
+  `com.company.braze.android_api_key.<COUNTRY>` / `com.company.braze.ios_api_key.<COUNTRY>`
+  prefix to the official Braze namespace: `com.braze.android_api_key.<COUNTRY>` /
+  `com.braze.ios_api_key.<COUNTRY>`. These names extend Braze's own documented preference keys
+  (`com.braze.android_api_key`, `com.braze.ios_api_key`) with a country suffix. No behavioral
+  change — the key is still resolved natively from `config.xml` and never exposed to JavaScript.
+  - `COMPANY_ANDROID_API_KEY_PREFIX` in `BrazePlugin.kt`: `"com.company.braze.android_api_key."` → `"com.braze.android_api_key."`
+  - `countryKey` format string in `BrazePlugin.m`: `"com.company.braze.ios_api_key.%@"` → `"com.braze.ios_api_key.%@"`

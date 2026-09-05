@@ -1017,8 +1017,8 @@ open class BrazePlugin : CordovaPlugin() {
 
     companion object {
         // COMPANY: Prefix for country-specific Android API key preferences.
-        // Full key: com.company.braze.android_api_key.<COUNTRY> (e.g. .EG, .MA)
-        private const val COMPANY_ANDROID_API_KEY_PREFIX = "com.company.braze.android_api_key."
+        // Full key: com.braze.android_api_key.<COUNTRY> (e.g. .EG, .MA) — extends the official Braze preference name.
+        private const val COMPANY_ANDROID_API_KEY_PREFIX = "com.braze.android_api_key."
         private val COMPANY_SUPPORTED_COUNTRIES = setOf("EG", "MA")
 
         // Preference keys found in the config.xml

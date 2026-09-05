@@ -124,8 +124,8 @@ bool useBrazeUIForInAppMessages;
     [self.commandDelegate sendPluginResult:r callbackId:command.callbackId];
     return;
   }
-  // Resolution order: country-specific key → com.braze.ios_api_key → com.braze.api_key (already in self.APIKey).
-  NSString *countryKey = [NSString stringWithFormat:@"com.company.braze.ios_api_key.%@", country];
+  // Resolution order: country-specific key (com.braze.ios_api_key.<COUNTRY>) → com.braze.ios_api_key → com.braze.api_key (already in self.APIKey).
+  NSString *countryKey = [NSString stringWithFormat:@"com.braze.ios_api_key.%@", country];
   NSString *resolvedKey = self.commandDelegate.settings[countryKey];
   if (resolvedKey && resolvedKey.length > 0) {
     self.APIKey = resolvedKey;
