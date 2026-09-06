@@ -112,6 +112,12 @@ open class BrazePlugin : CordovaPlugin() {
                 return true
             }
             preferences.set(BRAZE_API_KEY_PREFERENCE, apiKey)
+            // COMPANY: Destroy any existing singleton and clear the DataStore before configuring
+            // with the country-specific key. The ContentProvider may have already created the
+            // singleton using a cached (possibly wrong-country) key from a prior session.
+            // wipeData() clears that cached key and the delayed_init=false flag, giving
+            // configure() + disableDelayedInitialization() a clean slate every time.
+            Braze.wipeData(applicationContext)
             configureFromCordovaPreferences(preferences)
             companyBrazeInitialized = true
             callbackContext.success()
@@ -688,7 +694,10 @@ open class BrazePlugin : CordovaPlugin() {
     }
 
     /**
-     * Calls [Braze.configure] using the values found from the [CordovaPreferences].
+     * Calls [Braze.configure] then [Braze.disableDelayedInitialization] using the values found
+     * from the [CordovaPreferences]. The two-call sequence is required for Braze v43 delayed
+     * initialization: configure() stores the pending config even when the singleton is already
+     * live (returning false), and disableDelayedInitialization() applies it and exits delayed mode.
      *
      * @param cordovaPreferences the preferences used to initialize this plugin
      */
@@ -914,8 +923,12 @@ open class BrazePlugin : CordovaPlugin() {
             }
         }
 
-        // Configure Braze with the configurations in the builder.
+        // Configure Braze with the new country-specific key.
+        // When the Braze SDK ContentProvider has already created the singleton in delayed
+        // initialization mode, configure() returns false and stores the config as "pending".
+        // disableDelayedInitialization() then applies that pending config and exits delayed mode.
         Braze.configure(applicationContext, configBuilder.build())
+        Braze.disableDelayedInitialization(applicationContext)
     }
 
     private fun returnCachedContentCards(callbackContext: CallbackContext): Boolean {
