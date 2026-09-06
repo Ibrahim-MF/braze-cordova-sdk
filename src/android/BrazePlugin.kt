@@ -49,8 +49,10 @@ open class BrazePlugin : CordovaPlugin() {
     private var disableAutoStartSessions = false
     private var inAppMessageDisplayOperation: InAppMessageOperation = InAppMessageOperation.DISPLAY_NOW
     private var subscribeToInAppMessageCallbackContext: CallbackContext? = null
-    // COMPANY: Tracks whether Braze has been configured with a country-specific API key.
+    // COMPANY: Tracks whether Braze has been configured with a country-specific API key,
+    // and which country it was last configured for.
     private var companyBrazeInitialized = false
+    private var companyCurrentCountry: String = ""
 
     override fun pluginInitialize() {
         applicationContext = cordova.activity.applicationContext
@@ -93,10 +95,6 @@ open class BrazePlugin : CordovaPlugin() {
         // COMPANY: Country-aware deferred initialization. Resolves the API key natively
         // so no actual key is ever exposed to the JavaScript layer.
         if (action == "initialize") {
-            if (companyBrazeInitialized) {
-                callbackContext.success("already_initialized")
-                return true
-            }
             val country = args.optString(0, "").uppercase()
             if (country.isBlank()) {
                 callbackContext.error("Country code is required.")
@@ -104,6 +102,13 @@ open class BrazePlugin : CordovaPlugin() {
             }
             if (country !in COMPANY_SUPPORTED_COUNTRIES) {
                 callbackContext.error("Unsupported country: $country")
+                return true
+            }
+            // Skip re-initialization only when the same country is already active.
+            // A different country (e.g. logout → login with MA after EG) must re-initialize
+            // so events go to the correct workspace.
+            if (companyBrazeInitialized && companyCurrentCountry == country) {
+                callbackContext.success("already_initialized")
                 return true
             }
             val apiKey = resolveCompanyAndroidApiKey(country)
@@ -117,8 +122,12 @@ open class BrazePlugin : CordovaPlugin() {
             // singleton using a cached (possibly wrong-country) key from a prior session.
             // wipeData() clears that cached key and the delayed_init=false flag, giving
             // configure() + disableDelayedInitialization() a clean slate every time.
+            // This also handles same-session country switches (e.g. logout EG → login MA).
             Braze.wipeData(applicationContext)
             configureFromCordovaPreferences(preferences)
+            // Re-register the in-app message manager after wipeData destroys the previous instance.
+            getInAppMessageManager().registerInAppMessageManager(cordova.activity)
+            companyCurrentCountry = country
             companyBrazeInitialized = true
             callbackContext.success()
             return true
