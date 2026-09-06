@@ -38,6 +38,9 @@
   // Others
   @property NSString *sdkAuthCallbackID;
   @property NSString *subscribeToInAppMessageCallbackID;
+
+  // COMPANY: Tracks which country Braze was last initialized for (e.g. @"EG", @"MA").
+  @property NSString *companyCurrentCountry;
 @end
 
 static Braze *_braze;
@@ -106,11 +109,6 @@ bool useBrazeUIForInAppMessages;
 // COMPANY: Country-aware deferred Braze initialization.
 // Resolves the platform API key natively; no actual key is exposed to the JS layer.
 - (void)initializeBraze:(CDVInvokedUrlCommand *)command {
-  if ([BrazePlugin braze] != nil) {
-    CDVPluginResult *result = [CDVPluginResult resultWithStatus:CDVCommandStatus_OK messageAsString:@"already_initialized"];
-    [self.commandDelegate sendPluginResult:result callbackId:command.callbackId];
-    return;
-  }
   NSString *country = [[command.arguments firstObject] uppercaseString];
   NSArray *supported = @[@"EG", @"MA"];
   if (!country || country.length == 0) {
@@ -124,23 +122,33 @@ bool useBrazeUIForInAppMessages;
     [self.commandDelegate sendPluginResult:r callbackId:command.callbackId];
     return;
   }
-  // Resolution order: country-specific key (com.braze.ios_api_key.<COUNTRY>) → com.braze.ios_api_key → com.braze.api_key (already in self.APIKey).
+  // Skip re-initialization only when the same country is already active.
+  // A different country (e.g. logout EG → login MA) must re-initialize so events go to the
+  // correct workspace.
+  if ([BrazePlugin braze] != nil && [self.companyCurrentCountry isEqualToString:country]) {
+    CDVPluginResult *result = [CDVPluginResult resultWithStatus:CDVCommandStatus_OK messageAsString:@"already_initialized"];
+    [self.commandDelegate sendPluginResult:result callbackId:command.callbackId];
+    return;
+  }
+  // Wipe the existing Braze instance before re-initializing with a new country key.
+  // This handles same-session country switches (logout EG → login MA in the same process).
+  if ([BrazePlugin braze] != nil) {
+    [[BrazePlugin braze] wipeData];
+    [BrazePlugin setBraze:nil];
+  }
+  // Resolution order: country-specific key → com.braze.ios_api_key → com.braze.api_key (already in self.APIKey).
   NSString *countryKey = [NSString stringWithFormat:@"com.braze.ios_api_key.%@", country];
   NSString *resolvedKey = self.commandDelegate.settings[countryKey];
   if (resolvedKey && resolvedKey.length > 0) {
     self.APIKey = resolvedKey;
   }
   [self didFinishLaunchingListener:nil];
+  self.companyCurrentCountry = country;
   CDVPluginResult *result = [CDVPluginResult resultWithStatus:CDVCommandStatus_OK];
   [self.commandDelegate sendPluginResult:result callbackId:command.callbackId];
 }
 
 - (void)didFinishLaunchingListener:(NSNotification *)notification {
-  if ([BrazePlugin braze] != nil) {
-    [[NSNotificationCenter defaultCenter] removeObserver:self name:UIApplicationDidFinishLaunchingNotification object:nil];
-    return;
-  }
-
   BRZConfiguration *configuration = [[BRZConfiguration alloc] initWithApiKey:self.APIKey
                                                                     endpoint:self.apiEndpoint];
   
