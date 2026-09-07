@@ -390,6 +390,8 @@ bool useBrazeUIForInAppMessages;
 
 - (void)wipeData:(CDVInvokedUrlCommand *)command {
   [self.braze wipeData];
+  [BrazePlugin setBraze:nil];
+  self.companyCurrentCountry = nil;
 }
 
 - (void)requestImmediateDataFlush:(CDVInvokedUrlCommand *)command {

@@ -197,6 +197,8 @@ open class BrazePlugin : CordovaPlugin() {
             "wipeData" -> {
                 Braze.wipeData(applicationContext)
                 pluginInitializationFinished = false
+                companyBrazeInitialized = false
+                companyCurrentCountry = ""
                 return true
             }
             "enableSdk" -> {
