@@ -127,6 +127,19 @@ open class BrazePlugin : CordovaPlugin() {
             configureFromCordovaPreferences(preferences)
             // Re-register the in-app message manager after wipeData destroys the previous instance.
             getInAppMessageManager().registerInAppMessageManager(cordova.activity)
+            // wipeData() clears the locally-cached FCM push token from Braze's DataStore.
+            // FCM only calls onNewToken() when the token changes, so we must explicitly re-fetch
+            // the current token and hand it to Braze to restore push notification capability.
+            try {
+                com.google.firebase.messaging.FirebaseMessaging.getInstance().token
+                    .addOnSuccessListener { token ->
+                        if (!token.isNullOrBlank()) {
+                            getBraze().registeredPushToken = token
+                        }
+                    }
+            } catch (e: Exception) {
+                Log.w(TAG, "FCM token re-registration after Braze initialize failed", e)
+            }
             companyCurrentCountry = country
             companyBrazeInitialized = true
             callbackContext.success()
