@@ -138,7 +138,7 @@ open class BrazePlugin : CordovaPlugin() {
                         }
                     }
             } catch (e: Exception) {
-                Log.w(TAG, "FCM token re-registration after Braze initialize failed", e)
+                brazelog(W) { "FCM token re-registration after Braze initialize failed: $e" }
             }
             companyCurrentCountry = country
             companyBrazeInitialized = true
