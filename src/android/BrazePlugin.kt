@@ -209,6 +209,15 @@ open class BrazePlugin : CordovaPlugin() {
             }
             "wipeData" -> {
                 Braze.wipeData(applicationContext)
+                // COMPANY: Call disableSdk() on the same thread, immediately after
+                // wipeData(), instead of relying on a separate JS->native bridge call.
+                // wipeData() nulls the singleton and asynchronously clears DataStore;
+                // a background thread races to re-create the singleton by reading
+                // DataStore before a second, separately-dispatched disableSdk() call's
+                // write to that same DataStore would land — landing the new instance in
+                // delayed mode (which still displays incoming pushes) instead of
+                // disabled mode. Chaining the call here removes that JS round-trip gap.
+                Braze.disableSdk(applicationContext)
                 pluginInitializationFinished = false
                 companyBrazeInitialized = false
                 companyCurrentCountry = ""
